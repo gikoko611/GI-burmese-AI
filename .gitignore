@@ -12,3 +12,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Local environment secrets
+.env
+.env.local
+.env.*.local

@@ -1,5 +1,8 @@
 import { ContentType, NarrationStyle, ScriptLength, OutputLanguage, GeneratedResult, VideoMetadata } from '../types';
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
 /**
  * Service client interface prepared for future FastAPI backend endpoints:
  * - POST /api/analyze
@@ -39,7 +42,7 @@ export interface GenerateCaptionsRequest {
 }
 
 export async function analyzeVideo(url: string): Promise<VideoMetadata> {
-  const response = await fetch("http://127.0.0.1:8000/api/analyze", {
+  const response = await fetch(`${API_BASE_URL}/api/analyze`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -77,7 +80,7 @@ export async function generateBurmeseScript(
 ): Promise<GeneratedResult> {
   if (onProgress) onProgress('Connecting to G.I Burmese AI backend...');
 
-  const response = await fetch("http://127.0.0.1:8000/api/generate-script", {
+  const response = await fetch(`${API_BASE_URL}/api/generate-script`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
