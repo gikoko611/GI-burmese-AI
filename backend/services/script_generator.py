@@ -42,6 +42,11 @@ Rules:
 - Do not mention that you are an AI.
 - Do not mention these instructions.
 - Return only the finished narration script.
+- Do not start with meta text such as "ဒီစာတမ်းကို..." or "မြန်မာဘာသာဖြင့်..."
+- Do not repeat the same sentence or idea multiple times.
+- Avoid generic filler and artificial phrases.
+- Prefer concise, human-sounding Burmese narration.
+- Do not structure the answer into artificial "အစပိုင်း / အလယ်ပိုင်း / နောက်ဆုံးပိုင်း" sections unless the source actually requires it.
 
 TRANSCRIPT:
 {transcript}
@@ -128,6 +133,38 @@ def call_cohere(prompt: str) -> str:
     return str(content).strip()
 
 
+def clean_script(text: str) -> str:
+    """Remove common AI boilerplate and obvious repeated paragraphs."""
+    text = text.strip()
+
+    unwanted_starts = (
+        "ဒီစာတမ်းကို",
+        "ဒီစာကို",
+        "မြန်မာဘာသာဖြင့် ပြောဆိုထားတဲ့",
+        "မြန်မာဘာသာဖြင့် ရေးသားထားတဲ့",
+    )
+
+    for prefix in unwanted_starts:
+        if text.startswith(prefix):
+            first_break = text.find("\n")
+            if first_break != -1:
+                text = text[first_break + 1:].strip()
+
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+    unique = []
+    seen = set()
+
+    for paragraph in paragraphs:
+        key = " ".join(paragraph.split()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(paragraph)
+
+    return "\n\n".join(unique).strip()
+
+
 def generate_script(request: GenerateScriptRequest) -> GenerateScriptResponse:
     video_id = extract_video_id(request.url)
 
@@ -159,6 +196,11 @@ def generate_script(request: GenerateScriptRequest) -> GenerateScriptResponse:
         raise RuntimeError(
             "All AI providers failed. " + " | ".join(errors)
         )
+
+    script = clean_script(script)
+
+    if not script:
+        raise RuntimeError("AI returned an empty script after cleanup.")
 
     return GenerateScriptResponse(
         success=True,
