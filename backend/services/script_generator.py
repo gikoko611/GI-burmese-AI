@@ -1,60 +1,74 @@
+from google import genai
+
+from backend.config import GEMINI_API_KEY
 from backend.schemas import (
     GenerateScriptRequest,
     GenerateScriptResponse,
     ScriptSegment,
 )
+from backend.services.analyzer import extract_video_id, fetch_transcript
+
+
+def build_prompt(request: GenerateScriptRequest, transcript: str) -> str:
+    return f"""
+You are G.I Burmese AI, a professional Burmese content writer.
+
+Create a natural Burmese narration script from the YouTube transcript below.
+
+Requirements:
+- Output language: {request.outputLanguage}
+- Content type: {request.contentType}
+- Script length: {request.scriptLength}
+- Narration style: {request.narrationStyle}
+- Do not invent facts that are not supported by the transcript.
+- Rewrite naturally; do not simply translate word-for-word.
+- Make the narration suitable for a Burmese YouTube video.
+- Use clear Burmese Unicode.
+- Avoid unnecessary English unless it is a proper name or technical term.
+
+YouTube transcript:
+{transcript}
+"""
 
 
 def generate_script(request: GenerateScriptRequest) -> GenerateScriptResponse:
-    video_id = "unknown"
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not configured on the backend."
+        )
 
-    if request.analysis:
-        video_id = request.analysis.videoId
+    video_id = extract_video_id(request.url)
+    transcript_data = fetch_transcript(video_id)
+    transcript = transcript_data["transcript"]
 
-    script = (
-        "မင်္ဂလာပါ။ ဒီဗီဒီယိုကို Burmese AI နဲ့ ပြန်လည်တင်ပြပေးပါမယ်။\n\n"
-        "လက်ရှိ Backend က Demo Mode ဖြစ်တဲ့အတွက် မူရင်းဗီဒီယိုရဲ့ "
-        "transcript သို့မဟုတ် audio ကို မရရှိသေးပါ။ "
-        "ဒါကြောင့် အောက်ပါစာသားဟာ real video recap မဟုတ်ဘဲ "
-        "pipeline စမ်းသပ်ရန်အတွက် demo script ဖြစ်ပါတယ်။\n\n"
-        f"Video ID: {video_id}\n"
-        f"Content Type: {request.contentType}\n"
-        f"Script Length: {request.scriptLength}\n"
-        f"Narration Style: {request.narrationStyle}\n"
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=build_prompt(request, transcript),
     )
 
-    segments = [
-        ScriptSegment(
-            timestamp="00:00",
-            heading="Introduction",
-            content="ဒီအပိုင်းမှာ ဗီဒီယိုအကြောင်းအရာကို မိတ်ဆက်ပေးထားပါတယ်။",
-        ),
-        ScriptSegment(
-            timestamp="00:30",
-            heading="Main Content",
-            content="Real transcript provider ချိတ်ဆက်ပြီးနောက် ဒီနေရာမှာ "
-                    "ဗီဒီယိုထဲက အဓိကအချက်အလက်တွေကို Burmese လို "
-                    "သဘာဝကျကျ ပြန်လည်ရေးသားပေးပါမယ်။",
-        ),
-        ScriptSegment(
-            timestamp="01:00",
-            heading="Conclusion",
-            content="Transcript ရရှိလာတဲ့အခါ အဓိကအချက်တွေကို စုစည်းပြီး "
-                    "နောက်ဆုံးအနှစ်ချုပ်ကို ထုတ်ပေးနိုင်ပါမယ်။",
-        ),
-    ]
+    script = (response.text or "").strip()
+
+    if not script:
+        raise RuntimeError("Gemini returned an empty script.")
 
     return GenerateScriptResponse(
         success=True,
         script=script,
-        segments=segments,
+        segments=[
+            ScriptSegment(
+                timestamp="00:00",
+                heading="Burmese AI Narration",
+                content=script,
+            )
+        ],
         wordCount=len(script.split()),
         characterCount=len(script),
         estimatedDuration=request.scriptLength,
-        isDemoMode=True,
+        isDemoMode=False,
         disclaimer=(
-            "Demo Mode: no real transcript or video media was processed. "
-            "Connect an authorized transcript provider for real video-based "
-            "Burmese script generation."
+            "Real YouTube transcript processed by Gemini "
+            "for Burmese script generation."
         ),
     )
