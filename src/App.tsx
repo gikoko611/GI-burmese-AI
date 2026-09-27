@@ -118,7 +118,7 @@ export default function App() {
         }
       }, 100);
     } catch {
-      setUrlError('An error occurred during mock generation.');
+      setUrlError('An error occurred during script generation.');
     } finally {
       setIsGenerating(false);
       setGenerationStep('');
