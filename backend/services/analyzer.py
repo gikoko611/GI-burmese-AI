@@ -1,6 +1,8 @@
 import re
 from urllib.parse import parse_qs, urlparse
 
+from youtube_transcript_api import YouTubeTranscriptApi
+
 from backend.schemas import VideoAnalysisResult
 
 
@@ -15,7 +17,11 @@ def extract_video_id(url: str) -> str:
 
     parsed = urlparse(value)
 
-    if parsed.netloc.lower() in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+    if parsed.netloc.lower() in {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+    }:
         if parsed.path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [None])[0]
         elif parsed.path.startswith("/shorts/"):
@@ -37,19 +43,43 @@ def extract_video_id(url: str) -> str:
     return video_id
 
 
+def get_transcript(video_id: str) -> str:
+    api = YouTubeTranscriptApi()
+
+    try:
+        transcript = api.fetch(video_id)
+    except Exception as exc:
+        raise ValueError(
+            "Transcript is unavailable for this YouTube video."
+        ) from exc
+
+    text = " ".join(
+        snippet.text.strip()
+        for snippet in transcript
+        if snippet.text.strip()
+    )
+
+    if not text:
+        raise ValueError("The YouTube transcript is empty.")
+
+    return text
+
+
 def analyze_video(url: str) -> VideoAnalysisResult:
     video_id = extract_video_id(url)
 
+    transcript = get_transcript(video_id)
+
     return VideoAnalysisResult(
         videoId=video_id,
-        title="Demo YouTube Video",
+        title="YouTube Video",
         duration=None,
         channel=None,
-        detectedTopics=["YouTube", "Content Analysis", "Burmese AI"],
+        detectedTopics=["YouTube", "Transcript", "Burmese AI"],
         suggestedContentType="General Explanation",
-        isDemoMode=True,
+        isDemoMode=False,
         disclaimer=(
-            "Demo Mode: no real transcript or video media was downloaded. "
-            "Connect an authorized transcript or metadata provider for real analysis."
+            f"Transcript loaded successfully. "
+            f"{len(transcript)} characters available for AI analysis."
         ),
     )
