@@ -7,9 +7,13 @@ from backend.schemas import (
     AnalyzeVideoResponse,
     GenerateScriptRequest,
     GenerateScriptResponse,
+    RecapRequest,
+    RecapJobResponse,
+    RecapStatusResponse,
 )
 from backend.services.analyzer import analyze_video
 from backend.services.script_generator import generate_script
+from backend.services.recap.pipeline import create_job, get_job
 
 
 app = FastAPI(
@@ -78,3 +82,57 @@ async def analyze(request: AnalyzeVideoRequest):
             status_code=500,
             detail="Video analysis failed.",
         ) from exc
+
+
+@app.post("/api/recap", response_model=RecapJobResponse)
+async def create_recap(request: RecapRequest):
+    try:
+        job_id = create_job(
+            request.url,
+            request.language,
+        )
+
+        return RecapJobResponse(
+            success=True,
+            job_id=job_id,
+            status="queued",
+            message="Recap job started.",
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        print(
+            f"[recap] {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create recap job: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@app.get("/api/recap/{job_id}", response_model=RecapStatusResponse)
+async def recap_status(job_id: str):
+    job = get_job(job_id)
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Recap job not found.",
+        )
+
+    return RecapStatusResponse(
+        success=True,
+        job_id=job["job_id"],
+        status=job["status"],
+        step=job.get("step"),
+        progress=job.get("progress", 0),
+        message=job.get("message"),
+        result=job.get("result"),
+        error=job.get("error"),
+    )

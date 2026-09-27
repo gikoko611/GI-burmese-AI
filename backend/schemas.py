@@ -72,3 +72,26 @@ class GenerateCaptionsResponse(BaseModel):
     message: str
     srt: Optional[str] = None
     vtt: Optional[str] = None
+
+
+class RecapRequest(BaseModel):
+    url: str = Field(..., min_length=1)
+    language: str = "my"
+
+
+class RecapJobResponse(BaseModel):
+    success: bool
+    job_id: str
+    status: str
+    message: Optional[str] = None
+
+
+class RecapStatusResponse(BaseModel):
+    success: bool
+    job_id: str
+    status: str
+    step: Optional[str] = None
+    progress: int = 0
+    message: Optional[str] = None
+    result: Optional[dict] = None
+    error: Optional[str] = None
