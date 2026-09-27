@@ -181,16 +181,28 @@ def generate_script(request: GenerateScriptRequest) -> GenerateScriptResponse:
     try:
         script = call_groq(prompt)
         provider = "Groq"
+        print("[generate-script] Groq generation succeeded.", flush=True)
     except Exception as exc:
-        errors.append(f"Groq: {type(exc).__name__}: {exc}")
+        error_message = f"{type(exc).__name__}: {exc}"
+        print(
+            f"[generate-script] Groq failed: {error_message}",
+            flush=True,
+        )
+        errors.append(f"Groq: {error_message}")
 
     # Fallback: Cohere
     if not script:
         try:
             script = call_cohere(prompt)
             provider = "Cohere"
+            print("[generate-script] Cohere fallback succeeded.", flush=True)
         except Exception as exc:
-            errors.append(f"Cohere: {type(exc).__name__}: {exc}")
+            error_message = f"{type(exc).__name__}: {exc}"
+            print(
+                f"[generate-script] Cohere failed: {error_message}",
+                flush=True,
+            )
+            errors.append(f"Cohere: {error_message}")
 
     if not script:
         raise RuntimeError(
