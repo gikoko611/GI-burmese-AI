@@ -58,7 +58,7 @@ def call_groq(prompt: str) -> str:
         raise RuntimeError("GROQ_API_KEY is not configured.")
 
     payload = json.dumps({
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "messages": [
             {
                 "role": "system",
