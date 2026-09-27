@@ -116,7 +116,10 @@ export const VideoUrlInput: React.FC<VideoUrlInputProps> = ({
         {metadata && (
           <div className="flex items-center gap-1 text-emerald-400 font-medium">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Video verified ({metadata.duration})</span>
+            <span>
+              Video verified
+              {metadata.duration !== "Unknown" ? ` (${metadata.duration})` : ""}
+            </span>
           </div>
         )}
       </div>
