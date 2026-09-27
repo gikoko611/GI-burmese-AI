@@ -1,12 +1,13 @@
 import re
-from urllib.parse import parse_qs, urlparse
-
-from youtube_transcript_api import YouTubeTranscriptApi
+from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.request import Request, urlopen
+import json
 
 from backend.schemas import VideoAnalysisResult
 
 
 YOUTUBE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
+TRANSCRIPT_API = "https://api.freetranscriptapi.com/v1/transcript"
 
 
 def extract_video_id(url: str) -> str:
@@ -43,48 +44,66 @@ def extract_video_id(url: str) -> str:
     return video_id
 
 
-def get_transcript(video_id: str) -> str:
-    api = YouTubeTranscriptApi()
+def fetch_transcript(video_id: str) -> dict:
+    query = urlencode({
+        "video_url": f"https://www.youtube.com/watch?v={video_id}"
+    })
 
-    try:
-        transcript = api.fetch(video_id)
-    except Exception as exc:
-        print(
-            f"[Transcript Error] video_id={video_id} "
-            f"type={type(exc).__name__} error={exc}",
-            flush=True,
-        )
-        raise ValueError(
-            f"Transcript unavailable: {type(exc).__name__}: {exc}"
-        ) from exc
-
-    text = " ".join(
-        snippet.text.strip()
-        for snippet in transcript
-        if snippet.text.strip()
+    request = Request(
+        f"{TRANSCRIPT_API}?{query}",
+        headers={
+            "User-Agent": "G.I-Burmese-AI/1.0",
+            "Accept": "application/json",
+        },
     )
 
-    if not text:
-        raise ValueError("The YouTube transcript is empty.")
+    try:
+        with urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(
+            f"Transcript provider request failed: {type(exc).__name__}: {exc}"
+        ) from exc
 
-    return text
+    transcript_items = data.get("transcript", [])
+
+    if not transcript_items:
+        raise ValueError("Transcript provider returned no transcript.")
+
+    transcript = " ".join(
+        item.get("text", "").strip()
+        for item in transcript_items
+        if item.get("text", "").strip()
+    )
+
+    if not transcript:
+        raise ValueError("Transcript is empty.")
+
+    return {
+        "title": data.get("title") or "YouTube Video",
+        "language": data.get("language"),
+        "transcript": transcript,
+    }
 
 
 def analyze_video(url: str) -> VideoAnalysisResult:
     video_id = extract_video_id(url)
-
-    transcript = get_transcript(video_id)
+    data = fetch_transcript(video_id)
 
     return VideoAnalysisResult(
         videoId=video_id,
-        title="YouTube Video",
+        title=data["title"],
         duration=None,
         channel=None,
-        detectedTopics=["YouTube", "Transcript", "Burmese AI"],
+        detectedTopics=[
+            "YouTube",
+            "Transcript",
+            "Burmese AI",
+        ],
         suggestedContentType="General Explanation",
         isDemoMode=False,
         disclaimer=(
-            f"Transcript loaded successfully. "
-            f"{len(transcript)} characters available for AI analysis."
+            f"Real transcript loaded successfully "
+            f"({len(data['transcript'])} characters)."
         ),
     )
