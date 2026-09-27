@@ -17,3 +17,7 @@ venv/
 .env
 .env.local
 .env.*.local
+
+*.bak
+*.bak2
+*.bak3

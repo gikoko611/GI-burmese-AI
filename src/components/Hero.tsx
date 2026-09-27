@@ -45,14 +45,14 @@ export const Hero: React.FC = () => {
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900/60 text-zinc-500 border border-zinc-800/50">
             <Mic className="w-3.5 h-3.5 text-zinc-500" />
-            <span>Voice (Future)</span>
+            <span>Voice (Coming Soon)</span>
           </div>
 
           <ArrowRight className="w-3.5 h-3.5 text-zinc-600 hidden sm:block" />
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900/60 text-zinc-500 border border-zinc-800/50">
             <Subtitles className="w-3.5 h-3.5 text-zinc-500" />
-            <span>Captions (Future)</span>
+            <span>Captions (Coming Soon)</span>
           </div>
         </div>
       </div>

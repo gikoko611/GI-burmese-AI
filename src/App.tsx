@@ -194,15 +194,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* FastAPI Architecture Ready Callout */}
+            {/* Backend Status */}
             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 text-xs text-zinc-400 space-y-2">
               <div className="flex items-center justify-between text-zinc-300 font-medium">
                 <span className="flex items-center gap-1.5">
                   <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                  <span>FastAPI Integration Architecture</span>
+                  <span>G.I Backend Connected</span>
                 </span>
                 <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
-                  Client Spec Ready
+                  Production Ready
                 </span>
               </div>
               <p className="text-zinc-500 leading-relaxed">
@@ -314,9 +314,9 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 text-zinc-400">
-            <span>Client Demo Mode</span>
+            <span>Cloud AI Mode</span>
             <span>·</span>
-            <span>No External API Keys Required</span>
+            <span>Secure Backend API</span>
           </div>
         </div>
       </footer>

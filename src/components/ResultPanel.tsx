@@ -41,7 +41,7 @@ Script Length: ${result.scriptLength} (${result.estimatedDuration})
 Language: ${result.language}
 Source URL: ${result.videoUrl}
 Generated: ${result.generatedAt}
-Notice: Demo — AI backend not connected
+Notice: AI Backend Connected
 ================================================\n\n`;
 
     const contentToDownload = headerInfo + result.fullText;
@@ -66,7 +66,7 @@ Notice: Demo — AI backend not connected
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                Demo — AI backend not connected
+                AI Backend Connected
               </span>
               <span className="text-xs text-zinc-400">
                 {result.contentType}
@@ -210,12 +210,12 @@ Notice: Demo — AI backend not connected
         </div>
       </div>
 
-      {/* Future Sections: Burmese Voice and Burmese Captions */}
+      {/* Additional Outputs */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 pt-2">
           <div className="h-px bg-zinc-800 flex-1"></div>
           <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider">
-            Future Multi-Modal Outputs
+            More Features Coming Soon
           </span>
           <div className="h-px bg-zinc-800 flex-1"></div>
         </div>
