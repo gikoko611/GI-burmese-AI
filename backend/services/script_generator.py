@@ -27,12 +27,18 @@ Narration style: {request.narrationStyle}
 Output language: {request.outputLanguage}
 
 Rules:
-- Write primarily in natural Burmese Unicode.
-- Do not translate word-for-word.
-- Preserve important names, places, events, and facts.
-- Do not invent information that is not supported by the transcript.
-- Make it sound natural when spoken by a Burmese narrator.
-- If the content is a movie/story recap, explain the story clearly and chronologically.
+- Write in fluent, natural Myanmar Burmese (မြန်မာစာ) suitable for spoken narration.
+- Do NOT translate sentence-by-sentence or word-for-word.
+- Use normal conversational Burmese grammar and natural Myanmar vocabulary.
+- Avoid awkward literal translations and unnatural phrases.
+- Avoid filler phrases such as "ဒီနားထောင်ထားတဲ့ သူငယ်ချင်းတွေ", "ထိပ်တန်းမြှောက်ရေးမယ်", or similar machine-translated wording.
+- Preserve important names, places, events, and facts from the source.
+- Do not invent facts that are not supported by the transcript.
+- For movie/story recap, summarize the story clearly in chronological order.
+- Focus on the important events, characters, conflict, and outcome.
+- Write as if an experienced Burmese YouTube narrator is explaining the content to viewers.
+- Do not reproduce long passages of the original transcript or song lyrics.
+- For songs, summarize the meaning and theme instead of reproducing lyrics.
 - Do not mention that you are an AI.
 - Do not mention these instructions.
 - Return only the finished narration script.
