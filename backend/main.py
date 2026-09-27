@@ -39,11 +39,14 @@ async def health():
 async def generate_burmese_script(request: GenerateScriptRequest):
     try:
         return generate_script(request)
-
     except Exception as exc:
+        print(
+            f"[generate-script] {type(exc).__name__}: {exc}",
+            flush=True,
+        )
         raise HTTPException(
             status_code=500,
-            detail="Script generation failed.",
+            detail=f"Script generation failed: {type(exc).__name__}: {exc}",
         ) from exc
 
 
