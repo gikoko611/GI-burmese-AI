@@ -1,0 +1,7 @@
+{
+  "name": "G.I Burmese AI",
+  "description": "Transform video content into clear Burmese scripts, narrations, and captions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
