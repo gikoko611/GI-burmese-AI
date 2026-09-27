@@ -49,8 +49,13 @@ def get_transcript(video_id: str) -> str:
     try:
         transcript = api.fetch(video_id)
     except Exception as exc:
+        print(
+            f"[Transcript Error] video_id={video_id} "
+            f"type={type(exc).__name__} error={exc}",
+            flush=True,
+        )
         raise ValueError(
-            "Transcript is unavailable for this YouTube video."
+            f"Transcript unavailable: {type(exc).__name__}: {exc}"
         ) from exc
 
     text = " ".join(
