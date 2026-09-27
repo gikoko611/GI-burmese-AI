@@ -76,8 +76,12 @@ export default function App() {
     try {
       const data = await analyzeVideo(videoUrl);
       setVideoMetadata(data);
-    } catch {
-      setUrlError('Failed to analyze video URL.');
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to analyze video URL.';
+      setUrlError(message);
     } finally {
       setIsAnalyzing(false);
     }
