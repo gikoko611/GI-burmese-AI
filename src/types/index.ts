@@ -36,6 +36,7 @@ export interface ScriptSection {
 }
 
 export interface GeneratedResult {
+  jobId?: string;
   title: string;
   contentType: ContentType;
   narrationStyle: NarrationStyle;

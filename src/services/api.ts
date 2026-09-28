@@ -192,6 +192,7 @@ export async function generateMovieRecap(
       const script = result.script || '';
 
       return {
+        jobId: job.job_id,
         title: 'G.I Movie Recap',
         contentType: 'Movie Recap',
         narrationStyle: 'YouTube Narration',
@@ -227,4 +228,64 @@ export async function generateBurmeseScript(
   onProgress?: (step: string) => void,
 ): Promise<GeneratedResult> {
   return generateMovieRecap(req.videoUrl, onProgress);
+}
+
+
+export async function uploadRecapMedia(
+  jobId: string,
+  file: File,
+): Promise<{
+  success: boolean;
+  job_id: string;
+  filename: string;
+  media_path?: string;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/recap/${encodeURIComponent(jobId)}/media`,
+    {
+      method: 'POST',
+      body: formData,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+
+  return response.json();
+}
+
+
+export async function renderRecapVideo(
+  jobId: string,
+): Promise<{
+  success: boolean;
+  job_id: string;
+  status: string;
+  video?: string | null;
+  duration_seconds?: number;
+  segments?: number;
+  message?: string | null;
+}> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/recap/${encodeURIComponent(jobId)}/render`,
+    {
+      method: 'POST',
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+
+  return response.json();
+}
+
+
+export function getRecapVideoUrl(jobId: string): string {
+  return `${API_BASE_URL}/api/recap/${encodeURIComponent(jobId)}/video`;
 }

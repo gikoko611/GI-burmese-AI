@@ -5,3 +5,4 @@ python-dotenv
 google-genai
 youtube-transcript-api==1.2.4
 edge-tts==7.2.8
+python-multipart
