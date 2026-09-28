@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.services.analyzer import extract_video_id, fetch_transcript
+from backend.services.analyzer import extract_video_id, fetch_transcript, detect_content_type
 from backend.services.script_generator import generate_script, call_groq
 from backend.schemas import GenerateScriptRequest
 import edge_tts
@@ -261,6 +261,11 @@ def run_job(job_id: str):
         transcript_data = fetch_transcript(video_id)
         transcript = transcript_data["transcript"]
 
+        content_type = detect_content_type(
+            transcript_data.get("title") or "YouTube Video",
+            transcript,
+        )
+
         source_analysis = {
             "video_id": video_id,
             "title": transcript_data.get("title") or "YouTube Video",
@@ -268,6 +273,7 @@ def run_job(job_id: str):
             "source_url": url,
             "transcript_character_count": len(transcript),
             "analysis_type": "transcript_based",
+            "content_type": content_type,
             "created_at": now_iso(),
         }
 
@@ -277,70 +283,112 @@ def run_job(job_id: str):
         )
 
         # ---------------------------------------------------------
-        # STEP 2 — Gemini story intelligence
+        # STEP 2 — Story intelligence (Movie/Drama only)
         # ---------------------------------------------------------
-        update_job(
-            job_id,
-            step="Analyzing story with Gemini",
-            progress=30,
-            message="Extracting characters, scenes and story events...",
-            updated_at=now_iso(),
-        )
+        story_analysis = None
+        story_provider = None
 
-        try:
-            story_analysis = analyze_story_with_gemini(
-                transcript=transcript,
-                title=transcript_data.get("title") or "YouTube Video",
+        if content_type == "Movie Recap":
+            update_job(
+                job_id,
+                step="Analyzing story with Gemini",
+                progress=30,
+                message="Extracting characters, scenes and story events...",
+                updated_at=now_iso(),
             )
-            story_provider = "gemini"
-        except Exception as exc:
-            print(
-                f"[recap] Gemini story analysis failed: {type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            print("[recap] Falling back to Groq story analysis.", flush=True)
 
-            story_analysis = analyze_story_with_groq(
-                transcript=transcript,
-                title=transcript_data.get("title") or "YouTube Video",
-            )
-            story_provider = "groq"
-
-        write_json(
-            job_dir / "source_analysis.json",
-            {
-                **source_analysis,
-                "analysis_type": "structured_story_analysis",
-        "story_provider": story_provider,
-                "story": story_analysis,
-            },
-        )
-
-        characters = {
-            "status": "complete",
-            "characters": story_analysis.get("characters", []),
-            "voice_profiles": {
-                character["id"]: character.get(
-                    "voice_profile",
-                    "neutral",
+            try:
+                story_analysis = analyze_story_with_gemini(
+                    transcript=transcript,
+                    title=transcript_data.get("title") or "YouTube Video",
                 )
-                for character in story_analysis.get(
-                    "characters",
-                    [],
+                story_provider = "gemini"
+            except Exception as exc:
+                print(
+                    f"[recap] Gemini story analysis failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
                 )
-            },
-            "created_at": now_iso(),
-        }
+                print(
+                    "[recap] Falling back to Groq story analysis.",
+                    flush=True,
+                )
 
-        write_json(
-            job_dir / "characters.json",
-            characters,
-        )
+                story_analysis = analyze_story_with_groq(
+                    transcript=transcript,
+                    title=transcript_data.get("title") or "YouTube Video",
+                )
+                story_provider = "groq"
 
-        write_json(
-            job_dir / "story_analysis.json",
-            story_analysis,
-        )
+            write_json(
+                job_dir / "source_analysis.json",
+                {
+                    **source_analysis,
+                    "analysis_type": "structured_story_analysis",
+                    "story_provider": story_provider,
+                    "story": story_analysis,
+                },
+            )
+
+            characters = {
+                "status": "complete",
+                "characters": story_analysis.get("characters", []),
+                "voice_profiles": {
+                    character["id"]: character.get(
+                        "voice_profile",
+                        "neutral",
+                    )
+                    for character in story_analysis.get(
+                        "characters",
+                        [],
+                    )
+                },
+                "created_at": now_iso(),
+            }
+
+            write_json(
+                job_dir / "characters.json",
+                characters,
+            )
+
+            write_json(
+                job_dir / "story_analysis.json",
+                story_analysis,
+            )
+        else:
+            # Music and general content must not be forced through
+            # the movie/story analyzer.
+            write_json(
+                job_dir / "source_analysis.json",
+                {
+                    **source_analysis,
+                    "analysis_type": "transcript_based",
+                    "content_type": content_type,
+                    "story_provider": None,
+                    "story": None,
+                },
+            )
+
+            write_json(
+                job_dir / "characters.json",
+                {
+                    "status": "not_applicable",
+                    "characters": [],
+                    "voice_profiles": {},
+                    "created_at": now_iso(),
+                },
+            )
+
+            write_json(
+                job_dir / "story_analysis.json",
+                {
+                    "status": "not_applicable",
+                    "content_type": content_type,
+                    "characters": [],
+                    "scenes": [],
+                    "events": [],
+                },
+            )
 
         # ---------------------------------------------------------
         # STEP 3 — Burmese recap script
@@ -355,7 +403,7 @@ def run_job(job_id: str):
 
         script_request = GenerateScriptRequest(
             url=url,
-            contentType="Movie Recap",
+            contentType=content_type,
             scriptLength="Detailed",
             narrationStyle="Storytelling",
             outputLanguage="Burmese",

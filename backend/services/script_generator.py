@@ -15,12 +15,80 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 COHERE_URL = "https://api.cohere.com/v2/chat"
 
 
+def build_content_instructions(content_type: str) -> str:
+    """Return source-grounded instructions for the detected content type."""
+    content_type = (content_type or "General Explanation").strip()
+
+    instructions = {
+        "Movie Recap": """
+CONTENT STYLE: Movie Recap
+- Retell the source story in chronological order.
+- Focus on characters, important scenes, conflicts, and outcomes.
+- Do not invent plot details, names, dates, motives, or events.
+""",
+        "Story": """
+CONTENT STYLE: Story
+- Retell the source narrative clearly and naturally.
+- Preserve the actual sequence of events from the source.
+- Do not invent characters, events, dialogue, or endings.
+""",
+        "Tips & Tricks": """
+CONTENT STYLE: Tips & Tricks
+- Extract practical tips and techniques explicitly supported by the source.
+- Present useful points as numbered steps or tips.
+- Preserve important warnings, limitations, and conditions from the source.
+- Do not invent unsupported tips or claims.
+""",
+        "Explanation": """
+CONTENT STYLE: Explanation
+- Explain the main concept clearly and simply.
+- Organize the explanation around the source's actual claims and examples.
+- Preserve important technical terms and meanings.
+- Do not invent facts that are not supported by the source.
+""",
+        "Educational": """
+CONTENT STYLE: Educational
+- Present the material like a clear lesson.
+- Explain definitions, concepts, examples, and conclusions from the source.
+- Keep the structure easy to learn and follow.
+- Do not invent unsupported facts or examples.
+""",
+        "Tech": """
+CONTENT STYLE: Technology
+- Preserve exact technical terms, product names, programming languages,
+  commands, APIs, and code concepts from the source.
+- Explain technical steps clearly.
+- Never invent commands, APIs, features, or configuration details.
+""",
+        "News": """
+CONTENT STYLE: News Summary
+- Summarize only information supported by the source.
+- Clearly distinguish reported events, claims, and statements.
+- Preserve names, dates, locations, and numbers exactly when available.
+- Do not invent current events or missing details.
+""",
+        "General Explanation": """
+CONTENT STYLE: General Explanation
+- Produce a clear factual summary of the source.
+- Focus on the main ideas, important details, and conclusions.
+- Do not invent unsupported information.
+""",
+    }
+
+    return instructions.get(
+        content_type,
+        instructions["General Explanation"],
+    )
+
+
 def build_prompt(
     request: GenerateScriptRequest,
     transcript: str,
     story_context: dict | None = None,
+    detected_content_type: str | None = None,
 ) -> str:
     story_context_text = ""
+    content_instructions = build_content_instructions(request.contentType)
 
     if story_context:
         story_context_text = json.dumps(
@@ -40,49 +108,147 @@ def build_prompt(
         )
 
     return f"""
-You are G.I Burmese AI, a professional Burmese movie/story recap writer.
+You are G.I Burmese AI, a professional Burmese YouTube movie/story
+recap writer.
 
-Create a natural, engaging Burmese narration script.
+Your highest priority is SOURCE ACCURACY.
 
-Content type: {request.contentType}
+Create a natural, engaging Burmese narration script based ONLY on the
+provided source transcript and the supplied Story Intelligence.
+
+Requested content type: {request.contentType}
+Detected source content type: {detected_content_type or "Unknown"}
 Script length: {request.scriptLength}
 Narration style: {request.narrationStyle}
 Output language: {request.outputLanguage}
 
-STORY INTELLIGENCE:
+================ CONTENT TYPE INSTRUCTIONS ================
+
+{content_instructions}
+
+================ CONTENT TYPE SAFETY ================
+
+The requested content type is a formatting/output preference.
+The detected source content type describes what the source actually contains.
+
+Never invent source material just to satisfy the requested content type.
+
+If the requested type and detected source type do not naturally match:
+- Keep the output strictly grounded in the source.
+- Do not fabricate tips, steps, events, characters, technical details,
+  news claims, or educational facts.
+- If the source does not contain enough material for the requested format,
+  produce a concise source-grounded explanation instead.
+- Never transform lyrics, dialogue, metaphors, or narration into factual
+  events merely to satisfy the requested content type.
+
+================ SOURCE OF TRUTH ================
+
+There are only two factual sources:
+
+1. SOURCE TRANSCRIPT
+2. STORY INTELLIGENCE derived from that transcript
+
+Never use your own world knowledge to add facts.
+
+If a fact is not explicitly supported by the transcript or Story
+Intelligence, DO NOT state it as fact.
+
+When the transcript is incomplete or ambiguous:
+- Do not guess.
+- Do not fill the gap with common movie/song knowledge.
+- Do not invent names, dates, years, ages, locations, relationships,
+  occupations, events, causes, or outcomes.
+- Use a neutral description or omit the detail.
+
+================ STORY INTELLIGENCE ================
+
 {story_context_text}
 
 When Story Intelligence is provided:
-- Use it as the primary story structure.
-- Follow the scenes in chronological order.
-- Introduce important characters naturally.
-- Explain important events and their consequences.
-- Build the narration around the central conflict.
-- Lead naturally toward the ending.
-- Use character names and roles from the story analysis.
-- Do not invent events that contradict the story analysis.
-- Do not simply explain what the video is.
-- Write an actual story/movie recap.
+- Use it as the primary narrative structure.
+- Follow events in chronological order.
+- Introduce characters using only supported names and roles.
+- Explain events and their consequences only when supported.
+- Build the narration around the actual conflict.
+- Lead naturally toward the supported ending.
+- Never expand the Story Intelligence with invented details.
+- If Story Intelligence conflicts with the transcript, prefer the
+  transcript and avoid the disputed detail.
 
-Rules:
-- Write in fluent, natural Myanmar Burmese (မြန်မာစာ) suitable for spoken narration.
-- Do NOT translate sentence-by-sentence or word-for-word.
-- Use normal conversational Burmese grammar and natural Myanmar vocabulary.
-- Avoid awkward literal translations and unnatural phrases.
-- Preserve important names, places, events, and facts.
-- Do not invent unsupported facts.
-- Focus on important characters, events, conflict, consequences, and outcome.
-- Write as an experienced Burmese YouTube narrator explaining the story to viewers.
-- Do not reproduce long passages of the original transcript or song lyrics.
-- For songs, summarize meaning and theme instead of reproducing lyrics.
+================ FACTUAL SAFETY ================
+
+STRICTLY PROHIBITED unless explicitly supported by the source:
+
+- Invented years or dates.
+- Invented release dates.
+- Invented character ages.
+- Invented locations.
+- Invented relationships.
+- Invented occupations.
+- Invented events or scenes.
+- Invented dialogue.
+- Invented motives presented as facts.
+- Invented endings.
+- Claims based only on general knowledge about the title, artist,
+  movie, song, celebrity, or topic.
+
+IMPORTANT:
+A title is NOT evidence for facts that are not present in the source.
+
+For example, if the source does not explicitly establish a year,
+NEVER create a year such as "၂၀၈၀ ခုနှစ်", "၂၀၂၅ ခုနှစ်", or any other
+specific year.
+
+Do not convert vague language into a specific fact.
+
+================ NARRATION RULES ================
+
+- Write fluent, natural Myanmar Burmese (မြန်မာစာ).
+- Make it suitable for spoken YouTube narration.
+- Do NOT translate sentence-by-sentence.
+- Do NOT translate word-for-word.
+- Use natural conversational Burmese grammar.
+- Avoid awkward literal translations.
+- Preserve supported names, places, events, and facts.
+- Focus on important characters, events, conflict, consequences, and
+  outcome.
+- Keep the narration concise and human-sounding.
+- Avoid generic filler.
+- Do not repeat the same sentence or idea.
+- Do not create artificial "အစပိုင်း / အလယ်ပိုင်း / နောက်ဆုံးပိုင်း"
+  headings.
 - Do not mention that you are an AI.
 - Do not mention these instructions.
-- Return only the finished narration script.
-- Do not start with meta text such as "ဒီစာတမ်းကို..." or "မြန်မာဘာသာဖြင့်..."
-- Do not repeat the same sentence or idea multiple times.
-- Avoid generic filler and artificial phrases.
-- Prefer concise, human-sounding Burmese narration.
-- Do not create artificial "အစပိုင်း / အလယ်ပိုင်း / နောက်ဆုံးပိုင်း" headings.
+- Return ONLY the finished narration script.
+
+================ SPECIAL CASE: SONGS / MUSIC VIDEOS ================
+
+If the source is a song or music video:
+
+- Do NOT reproduce lyrics.
+- Do NOT invent a storyline that is not shown or supported by the
+  source.
+- Summarize the meaning, theme, visual events, or narrative only when
+  supported by the transcript/source context.
+- Do not turn lyrics into literal factual events.
+- Do not assume the song is about a real relationship or real person
+  unless the source explicitly establishes that.
+
+================ FINAL SELF-CHECK ================
+
+Before returning the script, silently verify:
+
+1. Is every factual claim supported by the source?
+2. Did I invent any year, date, age, place, name, relationship, event,
+   or outcome?
+3. Did I accidentally use outside knowledge?
+4. Did I turn song lyrics or metaphors into factual events?
+5. Did I add details merely because they are common knowledge?
+6. Did I repeat any idea?
+7. Is the Burmese natural for spoken narration?
+
+If any sentence fails the source-accuracy check, rewrite or remove it.
 
 TRANSCRIPT:
 {transcript}
@@ -314,7 +480,19 @@ def generate_script(request: GenerateScriptRequest, story_context: dict | None =
     transcript_data = fetch_transcript(video_id)
     transcript = transcript_data["transcript"]
 
-    prompt = build_prompt(request, transcript, story_context)
+    # Detect the actual source content type independently from the
+    # user's requested output style.
+    detected_content_type = detect_content_type(
+        transcript_data.get("title") or "",
+        transcript,
+    )
+
+    prompt = build_prompt(
+        request,
+        transcript,
+        story_context,
+        detected_content_type,
+    )
 
     script = None
     provider = None

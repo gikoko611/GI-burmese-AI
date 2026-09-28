@@ -107,6 +107,148 @@ def fetch_transcript(video_id: str) -> dict:
     }
 
 
+def detect_content_type(title: str, transcript: str) -> str:
+    """
+    Detect the most appropriate G.I Burmese AI content type.
+
+    Music is intentionally not supported. Unknown content falls back
+    to General Explanation.
+    """
+    title_text = (title or "").lower().strip()
+    transcript_text = (transcript or "").lower().strip()
+    combined = f"{title_text}\n{transcript_text}"
+
+    # Movie / drama / story content
+    movie_markers = (
+        "movie",
+        "full movie",
+        "short film",
+        "film",
+        "episode",
+        "drama",
+        "trailer",
+        "movie recap",
+        "story",
+    )
+
+    # Tips / tricks / how-to content
+    tips_markers = (
+        "tips",
+        "tricks",
+        "tips and tricks",
+        "how to",
+        "tutorial",
+        "guide",
+        "ways to",
+        "best way",
+        "step by step",
+        "steps to",
+    )
+
+    # Technology / coding content
+    tech_markers = (
+        "python",
+        "javascript",
+        "typescript",
+        "coding",
+        "programming",
+        "software",
+        "linux",
+        "android",
+        "github",
+        "api",
+        "database",
+        "developer",
+        "technology",
+        "tech",
+    )
+
+    # Educational content
+    education_markers = (
+        "learn",
+        "lesson",
+        "education",
+        "educational",
+        "course",
+        "explained",
+        "science",
+        "history",
+        "mathematics",
+        "physics",
+        "biology",
+    )
+
+    # News / current-events content
+    news_markers = (
+        "news",
+        "breaking news",
+        "latest news",
+        "update",
+        "current events",
+        "report",
+    )
+
+    # Informational explanation
+    explanation_markers = (
+        "explained",
+        "explanation",
+        "what is",
+        "why",
+        "how does",
+        "meaning",
+        "facts about",
+    )
+
+    if any(marker in title_text for marker in movie_markers):
+        return "Movie Recap"
+
+    if any(marker in title_text for marker in tech_markers):
+        return "Tech"
+
+    if any(marker in title_text for marker in news_markers):
+        return "News"
+
+    if any(marker in title_text for marker in explanation_markers):
+        return "Explanation"
+
+    if any(marker in title_text for marker in tips_markers):
+        return "Tips & Tricks"
+
+    if any(marker in title_text for marker in education_markers):
+        return "Educational"
+
+    # Use transcript signals only when the title is not enough.
+    if any(marker in transcript_text for marker in tech_markers):
+        return "Tech"
+
+    if any(marker in transcript_text for marker in news_markers):
+        return "News"
+
+    if any(marker in transcript_text for marker in explanation_markers):
+        return "Explanation"
+
+    if any(marker in transcript_text for marker in tips_markers):
+        return "Tips & Tricks"
+
+    if any(marker in transcript_text for marker in education_markers):
+        return "Educational"
+
+    # Story-like content
+    story_markers = (
+        "once upon a time",
+        "story begins",
+        "the story begins",
+        "narrator",
+        "character",
+        "chapter",
+    )
+
+    if any(marker in combined for marker in story_markers):
+        return "Story"
+
+    return "General Explanation"
+
+
 def analyze_video(url: str) -> VideoAnalysisResult:
     video_id = extract_video_id(url)
     data = fetch_transcript(video_id)
@@ -121,7 +263,10 @@ def analyze_video(url: str) -> VideoAnalysisResult:
             "Transcript",
             "Burmese AI",
         ],
-        suggestedContentType="General Explanation",
+        suggestedContentType=detect_content_type(
+            data["title"],
+            data["transcript"],
+        ),
         isDemoMode=False,
         disclaimer=(
             f"Real transcript loaded successfully "
