@@ -52,18 +52,39 @@ def fetch_transcript(video_id: str) -> dict:
     request = Request(
         f"{TRANSCRIPT_API}?{query}",
         headers={
-            "User-Agent": "G.I-Burmese-AI/1.0",
-            "Accept": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (Linux; Android 10) "
+                "AppleWebKit/537.36 "
+                "Chrome/140 Mobile Safari/537.36"
+            ),
+            "Accept": "application/json,text/plain,*/*",
+            "Connection": "close",
         },
     )
 
-    try:
-        with urlopen(request, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        raise ValueError(
-            f"Transcript provider request failed: {type(exc).__name__}: {exc}"
-        ) from exc
+    last_error = None
+
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                break
+        except Exception as exc:
+            last_error = exc
+
+            if attempt < 2:
+                print(
+                    f"[transcript] request failed "
+                    f"({type(exc).__name__}: {exc}); "
+                    f"retry {attempt + 2}/3...",
+                    flush=True,
+                )
+                continue
+
+            raise ValueError(
+                "Transcript provider request failed: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
 
     transcript_items = data.get("transcript", [])
 

@@ -23,3 +23,7 @@ venv/
 *.bak3
 
 runtime/recaps/
+
+# Backup files
+*.bak-*
+runtime/
