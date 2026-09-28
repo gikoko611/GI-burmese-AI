@@ -8,7 +8,7 @@ from backend.schemas import (
     GenerateScriptResponse,
     ScriptSegment,
 )
-from backend.services.analyzer import extract_video_id, fetch_transcript
+from backend.services.analyzer import extract_video_id, fetch_transcript, detect_content_type
 
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
