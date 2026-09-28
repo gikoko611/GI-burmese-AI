@@ -48,6 +48,9 @@ export interface GeneratedResult {
   fullText: string;
   sections: ScriptSection[];
   generatedAt: string;
+  recapStatus?: string;
+  audioPath?: string;
+  jobDirectory?: string;
 }
 
 export interface VideoMetadata {
