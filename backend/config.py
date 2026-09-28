@@ -12,7 +12,7 @@ FRONTEND_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "FRONTEND_ORIGINS",
-        "https://gikokoburmeseai.netlify.app",
+        "https://gi-burmese-ai-frontend.onrender.com",
     ).split(",")
     if origin.strip()
 ]
