@@ -3,6 +3,8 @@ import os
 import threading
 import uuid
 import asyncio
+import subprocess
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +15,7 @@ import edge_tts
 
 from .gemini_analyzer import StoryAnalysis, analyze_story_with_gemini
 from .renderer import render_recap
+from .local_transcriber import transcribe_uploaded_video
 DEFAULT_RECAP_DIR = Path(__file__).resolve().parents[3] / "runtime" / "recaps"
 
 BASE_DIR = Path(
@@ -132,24 +135,66 @@ async def _generate_tts_async(text: str, output_path: Path):
 
 
 def generate_tts(text: str, output_path: Path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     asyncio.run(_generate_tts_async(text, output_path))
 
 
-def build_audio_timeline(dialogue_script: dict, duration: float) -> dict:
-    segment = dialogue_script.get("segments", [{}])[0]
+def build_audio_timeline(
+    dialogue_script: dict,
+    duration: float,
+    segment_durations: list[float] | None = None,
+) -> dict:
+    raw_segments = dialogue_script.get("segments") or []
 
-    return {
-        "version": "1.0",
-        "language": dialogue_script.get("language", "my"),
-        "title": dialogue_script.get("title", "G.I Movie Recap"),
-        "audio": "dialogue_master.mp3",
-        "duration_seconds": duration,
-        "segments": [
+    if not raw_segments:
+        raw_segments = [
             {
-                "id": "narration_001",
-                "start": 0.0,
-                "end": duration,
-                "duration": duration,
+                "timestamp": "",
+                "heading": "Burmese AI Narration",
+                "content": dialogue_script.get("script", ""),
+            }
+        ]
+
+    # When per-segment TTS durations are available, use them directly.
+    # Otherwise distribute the total narration duration proportionally
+    # to each segment's text length.
+    if segment_durations and len(segment_durations) == len(raw_segments):
+        durations = [max(float(value), 0.01) for value in segment_durations]
+    else:
+        weights = [
+            max(len(str(segment.get("content", "")).strip()), 1)
+            for segment in raw_segments
+        ]
+        total_weight = sum(weights) or 1
+        durations = [
+            duration * weight / total_weight
+            for weight in weights
+        ]
+
+    scale = duration / sum(durations) if sum(durations) > 0 else 1.0
+    durations = [value * scale for value in durations]
+
+    timeline_segments = []
+    current = 0.0
+
+    for index, (segment, segment_duration) in enumerate(
+        zip(raw_segments, durations),
+        start=1,
+    ):
+        start = current
+        end = (
+            duration
+            if index == len(raw_segments)
+            else min(duration, current + segment_duration)
+        )
+
+        timeline_segments.append(
+            {
+                "id": f"narration_{index:03d}",
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(end - start, 3),
                 "type": "narration",
                 "heading": segment.get(
                     "heading",
@@ -157,10 +202,21 @@ def build_audio_timeline(dialogue_script: dict, duration: float) -> dict:
                 ),
                 "text": segment.get(
                     "content",
-                    dialogue_script.get("script", ""),
+                    "",
                 ),
+                "timestamp": segment.get("timestamp", ""),
             }
-        ],
+        )
+
+        current = end
+
+    return {
+        "version": "1.0",
+        "language": dialogue_script.get("language", "my"),
+        "title": dialogue_script.get("title", "G.I Movie Recap"),
+        "audio": "dialogue_master.mp3",
+        "duration_seconds": round(duration, 3),
+        "segments": timeline_segments,
         "created_at": now_iso(),
     }
 
@@ -203,7 +259,13 @@ def build_edit_plan(timeline: dict) -> dict:
     }
 
 
-def create_job(url: str, language: str = "my"):
+def create_job(
+    url: str | None = None,
+    language: str = "my",
+    source_type: str = "youtube",
+    script_length: str = "Detailed",
+    auto_start: bool = True,
+):
     job_id = f"recap_{uuid.uuid4().hex[:12]}"
 
     job_dir = BASE_DIR / job_id
@@ -218,11 +280,33 @@ def create_job(url: str, language: str = "my"):
             "message": "Recap job created.",
             "url": url,
             "language": language,
+            "source_type": source_type,
+            "script_length": script_length,
             "created_at": now_iso(),
             "updated_at": now_iso(),
             "result": None,
             "error": None,
+            "started": False,
         }
+
+    if auto_start:
+        start_job(job_id)
+
+    return job_id
+
+
+def start_job(job_id: str) -> bool:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+
+        if not job:
+            return False
+
+        if job.get("started"):
+            return False
+
+        job["started"] = True
+        job["updated_at"] = now_iso()
 
     thread = threading.Thread(
         target=run_job,
@@ -231,7 +315,7 @@ def create_job(url: str, language: str = "my"):
     )
     thread.start()
 
-    return job_id
+    return True
 
 
 def run_job(job_id: str):
@@ -242,6 +326,8 @@ def run_job(job_id: str):
 
     url = job["url"]
     language = job["language"]
+    source_type = job.get("source_type", "youtube").strip().lower()
+    script_length = job.get("script_length", "Detailed")
     job_dir = BASE_DIR / job_id
 
     try:
@@ -253,24 +339,75 @@ def run_job(job_id: str):
             status="running",
             step="Analyzing video",
             progress=15,
-            message="Loading YouTube transcript...",
+            message=(
+                "Loading YouTube transcript..."
+                if source_type == "youtube"
+                else "Preparing uploaded video..."
+            ),
             updated_at=now_iso(),
         )
 
-        video_id = extract_video_id(url)
-        transcript_data = fetch_transcript(video_id)
-        transcript = transcript_data["transcript"]
+        if source_type == "youtube":
+            if not url:
+                raise ValueError("YouTube source requires a URL.")
+
+            video_id = extract_video_id(url)
+            transcript_data = fetch_transcript(video_id)
+            transcript = transcript_data["transcript"]
+
+            source_title = transcript_data.get("title") or "YouTube Video"
+            source_language = transcript_data.get("language")
+            source_url = url
+
+        elif source_type == "upload":
+            media_candidates = sorted(job_dir.glob("authorized_media.*"))
+
+            if not media_candidates:
+                raise ValueError(
+                    "Uploaded video is required before starting an upload job."
+                )
+
+            media_path = media_candidates[0]
+
+            update_job(
+                job_id,
+                step="Transcribing uploaded video",
+                progress=22,
+                message="Extracting audio and transcribing with Gemini...",
+                updated_at=now_iso(),
+            )
+
+            transcript_data = transcribe_uploaded_video(
+                video_path=media_path,
+                job_dir=job_dir,
+            )
+
+            transcript = transcript_data["transcript"]
+            source_title = transcript_data.get("title") or "Uploaded Video"
+            source_language = transcript_data.get("language")
+            source_url = None
+
+            write_json(
+                job_dir / "uploaded_transcript.json",
+                transcript_data,
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported source_type: {source_type}"
+            )
 
         content_type = detect_content_type(
-            transcript_data.get("title") or "YouTube Video",
+            source_title,
             transcript,
         )
 
         source_analysis = {
-            "video_id": video_id,
-            "title": transcript_data.get("title") or "YouTube Video",
-            "language": transcript_data.get("language"),
-            "source_url": url,
+            "source_type": source_type,
+            "video_id": video_id if source_type == "youtube" else None,
+            "title": source_title,
+            "language": source_language,
+            "source_url": source_url,
             "transcript_character_count": len(transcript),
             "analysis_type": "transcript_based",
             "content_type": content_type,
@@ -402,9 +539,9 @@ def run_job(job_id: str):
         )
 
         script_request = GenerateScriptRequest(
-            url=url,
+            url=url or "",
             contentType=content_type,
-            scriptLength="Detailed",
+            scriptLength=script_length,
             narrationStyle="Storytelling",
             outputLanguage="Burmese",
         )
@@ -448,75 +585,150 @@ def run_job(job_id: str):
         )
 
         audio_path = job_dir / "dialogue_master.mp3"
-        generate_tts(dialogue_script["script"], audio_path)
 
-        # edge-tts output is MP3. For the current pipeline,
-        # the timeline uses the generated narration duration.
-        # The lightweight duration reader avoids an extra dependency.
-        import struct
+        # Generate Burmese TTS one segment at a time so the real audio
+        # duration of every narration segment can drive caption timing.
+        raw_segments = dialogue_script.get("segments") or []
 
-        raw = audio_path.read_bytes()
-        duration = 0.0
-        sample_rate = 0
-        bitrate = 0
-        offset = 0
+        if not raw_segments:
+            raw_segments = [
+                {
+                    "timestamp": "",
+                    "heading": "Burmese AI Narration",
+                    "content": dialogue_script.get("script", ""),
+                }
+            ]
 
-        mpeg_bitrates = {
-            3: {
-                1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
-                2: [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
-            }
-        }
-        sample_rates = {
-            3: [44100, 48000, 32000],
-            2: [22050, 24000, 16000],
-            0: [11025, 12000, 8000],
-        }
+        segment_audio_dir = job_dir / "segments_audio"
+        segment_audio_dir.mkdir(parents=True, exist_ok=True)
 
-        while offset + 4 < len(raw):
-            if raw[offset:offset + 3] == b"ID3":
-                if offset + 10 > len(raw):
-                    break
-                size = (
-                    ((raw[offset + 6] & 0x7F) << 21)
-                    | ((raw[offset + 7] & 0x7F) << 14)
-                    | ((raw[offset + 8] & 0x7F) << 7)
-                    | (raw[offset + 9] & 0x7F)
+        segment_durations = []
+        segment_audio_files = []
+
+        for index, segment in enumerate(raw_segments, start=1):
+            text = str(segment.get("content", "")).strip()
+
+            if not text:
+                continue
+
+            segment_audio_path = (
+                segment_audio_dir / f"segment_{index:03d}.mp3"
+            )
+
+            update_job(
+                job_id,
+                step="Generating Burmese audio",
+                progress=min(65 + int((index - 1) * 8 / max(len(raw_segments), 1)), 72),
+                message=f"Creating Burmese narration segment {index}/{len(raw_segments)}...",
+                updated_at=now_iso(),
+            )
+
+            generate_tts(text, segment_audio_path)
+
+            if not segment_audio_path.exists():
+                raise RuntimeError(
+                    f"TTS segment was not created: {segment_audio_path.name}"
                 )
-                offset += 10 + size
-                continue
 
-            header = int.from_bytes(raw[offset:offset + 4], "big")
+            if not shutil.which("ffprobe"):
+                raise RuntimeError(
+                    "ffprobe is required to measure TTS segment duration."
+                )
 
-            if (header >> 21) & 0x7FF != 0x7FF:
-                offset += 1
-                continue
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(segment_audio_path),
+                ],
+                capture_output=True,
+                text=True,
+            )
 
-            version = (header >> 19) & 0x3
-            layer = (header >> 17) & 0x3
-            br_index = (header >> 12) & 0xF
-            sr_index = (header >> 10) & 0x3
+            if probe.returncode != 0:
+                detail = probe.stderr.strip() or "Unknown ffprobe error."
+                raise RuntimeError(
+                    f"Could not measure TTS segment duration: {detail}"
+                )
 
-            if version == 1 and layer == 1 and br_index < 15 and sr_index < 3:
-                version_key = 3 if version == 3 else 2
-                rates = mpeg_bitrates.get(version_key)
-                if rates:
-                    bitrate = rates[1][br_index] * 1000
-                    sample_rate = sample_rates[3][sr_index]
-                    if bitrate and sample_rate:
-                        frame_length = int(
-                            144 * bitrate / sample_rate
-                        ) + ((header >> 9) & 1)
+            try:
+                segment_duration = float(probe.stdout.strip())
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Invalid TTS duration for {segment_audio_path.name}: "
+                    f"{probe.stdout.strip()!r}"
+                ) from exc
 
-                        if frame_length > 0:
-                            duration += 1152 / sample_rate
-                            offset += frame_length
-                            continue
+            if segment_duration <= 0:
+                raise RuntimeError(
+                    f"Invalid TTS segment duration: {segment_audio_path.name}"
+                )
 
-            offset += 1
+            segment_durations.append(segment_duration)
+            segment_audio_files.append(segment_audio_path)
 
-        if duration <= 0:
-            duration = 9.68
+        if not segment_audio_files:
+            raise RuntimeError("No narration segments were generated.")
+
+        # Concatenate all segment MP3 files into the master narration.
+        concat_list = segment_audio_dir / "concat.txt"
+
+        def _concat_path(path: Path) -> str:
+            value = str(path.resolve())
+            return value.replace("\\", "\\\\").replace("'", "\\'")
+
+        concat_list.write_text(
+            "".join(
+                f"file '{_concat_path(path)}'\n"
+                for path in segment_audio_files
+            ),
+            encoding="utf-8",
+        )
+
+        update_job(
+            job_id,
+            step="Combining Burmese audio",
+            progress=73,
+            message="Combining synchronized narration segments...",
+            updated_at=now_iso(),
+        )
+
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError("FFmpeg is required to combine narration segments.")
+
+        concat_result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "128k",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if concat_result.returncode != 0:
+            error_lines = concat_result.stderr.strip().splitlines()
+            detail = error_lines[-1] if error_lines else "Unknown FFmpeg error."
+            raise RuntimeError(
+                f"Failed to combine narration segments: {detail}"
+            )
+
+        duration = sum(segment_durations)
 
         # ---------------------------------------------------------
         # STEP 5 — Audio timeline
@@ -531,7 +743,8 @@ def run_job(job_id: str):
 
         timeline = build_audio_timeline(
             dialogue_script,
-            round(duration, 2),
+            round(duration, 3),
+            segment_durations=segment_durations,
         )
 
         write_json(

@@ -15,7 +15,7 @@ from backend.schemas import (
 )
 from backend.services.analyzer import analyze_video
 from backend.services.script_generator import generate_script
-from backend.services.recap.pipeline import create_job, get_job, BASE_DIR
+from backend.services.recap.pipeline import create_job, get_job, start_job, BASE_DIR
 from backend.services.recap.renderer import render_recap
 
 
@@ -89,10 +89,43 @@ async def analyze(request: AnalyzeVideoRequest):
 
 @app.post("/api/recap", response_model=RecapJobResponse)
 async def create_recap(request: RecapRequest):
+    source_type = request.source_type.strip().lower()
+
+    if source_type not in {"youtube", "upload"}:
+        raise HTTPException(
+            status_code=400,
+            detail="source_type must be 'youtube' or 'upload'.",
+        )
+
+    if source_type == "youtube" and not request.url:
+        raise HTTPException(
+            status_code=400,
+            detail="YouTube source requires a URL.",
+        )
+
+    allowed_script_lengths = {
+        "1 minute",
+        "5 minutes",
+        "10 minutes",
+        "Detailed",
+    }
+
+    if request.script_length not in allowed_script_lengths:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "script_length must be one of: "
+                "1 minute, 5 minutes, 10 minutes, Detailed."
+            ),
+        )
+
     try:
         job_id = create_job(
             request.url,
             request.language,
+            source_type,
+            request.script_length,
+            auto_start=(source_type == "youtube"),
         )
 
         return RecapJobResponse(
@@ -187,12 +220,23 @@ async def upload_recap_media(
             detail=f"Media upload failed: {type(exc).__name__}: {exc}",
         ) from exc
 
+    started = False
+
+    if job.get("source_type", "youtube").strip().lower() == "upload":
+        started = start_job(job_id)
+
     return {
         "success": True,
         "job_id": job_id,
         "filename": file.filename,
         "media_path": str(media_path),
-        "message": "Authorized media uploaded successfully.",
+        "status": "running" if started else job.get("status", "queued"),
+        "message": (
+            "Authorized media uploaded successfully; "
+            "upload recap processing started."
+            if started
+            else "Authorized media uploaded successfully."
+        ),
     }
 
 

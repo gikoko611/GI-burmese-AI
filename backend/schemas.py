@@ -75,8 +75,10 @@ class GenerateCaptionsResponse(BaseModel):
 
 
 class RecapRequest(BaseModel):
-    url: str = Field(..., min_length=1)
+    url: Optional[str] = None
     language: str = "my"
+    source_type: str = "youtube"
+    script_length: str = "Detailed"
 
 
 class RecapJobResponse(BaseModel):
